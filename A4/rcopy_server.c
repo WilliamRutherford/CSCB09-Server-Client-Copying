@@ -1,7 +1,11 @@
 #include <stdlib.h>
+#include <stdio.h>
+
+#include "ftree.h"
 
 int main( int argc, char **argv ){
 
-    return 0;
+    fcopy_server(PORT);
 
+    return 0;
 }

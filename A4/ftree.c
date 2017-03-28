@@ -11,6 +11,45 @@
 #include <stdbool.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+
+
+int setup(void) {
+  int on = 1, status;
+  struct sockaddr_in self;
+  int listenfd;
+  if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+    perror("socket");
+    exit(1);
+  }
+
+  // Make sure we can reuse the port immediately after the
+  // server terminates.
+  status = setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR,
+                      (const char *) &on, sizeof(on));
+  if(status == -1) {
+    perror("setsockopt -- REUSEADDR");
+  }
+
+  self.sin_family = AF_INET;
+  self.sin_addr.s_addr = INADDR_ANY;
+  self.sin_port = htons(PORT);
+  memset(&self.sin_zero, 0, sizeof(self.sin_zero));  // Initialize sin_zero to 0
+
+  printf("Listening on %d\n", PORT);
+
+  if (bind(listenfd, (struct sockaddr *)&self, sizeof(self)) == -1) {
+    perror("bind"); // probably means port is in use
+    exit(1);
+  }
+
+  if (listen(listenfd, 5) == -1) {
+    perror("listen");
+    exit(1);
+  }
+  return listenfd;
+}
 
 char* concat(const char *s1, const char *s2)
 {
@@ -324,3 +363,85 @@ int copy_ftree(const char *src, const char *dest) {
 
     return 1; //exit(0) makes entire program exit causing it to only be able to read one element in a directory
 }
+
+int fcopy_client(char *src_path, char*dest_path, char *host, int port){
+
+
+    return 0;
+
+}
+
+int find_network_nl(char *mesg, int mesg_size){
+
+  for(int i = 0; i < mesg_size ; i++){
+
+     if(mesg[i] == '\r'){
+
+	return i;
+
+     }
+  }
+
+  return -1;
+
+}
+
+void fcopy_server(int port){
+
+  listenfd = setup();
+
+  int fd; //file descriptor
+  int nbytes; //number of bytes read
+  char buf[512];
+  int inbuf; //bytes currently in buffer
+  int room;  //room left in buffer
+  char *after; //pointer to position after valid data
+  int where; //location of network newline
+  struct fileinfo *current_info = malloc(sizeof(fileinfo));
+  
+
+  struct sockaddr_in peer; //the socket address into the server
+  socklen_t socklen; //length of the socket
+ 
+  socklen = sizeof(peer);
+
+  if((fd = accept(listenfd, (struct sockaddr *)&peer, &socklen)) < 0 ){
+ 
+    perror("error acceptiong");
+
+  } else {
+
+    while(1){
+
+      if((fd = accept(listenfd, (struct sockaddr *)&peer, &socklen)) < 0 ){
+
+        perror("error accepting");
+
+      } else { //accepted
+
+        printf("New connection on port %d\n", ntohs(peer.sin_port));
+
+        //start recieving message
+        inbuf = 0; //empty
+        room = sizeof(buf);
+        after = buf; //set tapehead to start of buffer
+      
+        while((nbytes = read(fd, after, room)) > 0 ) {
+
+	  inbuf = nbytes;
+	
+	  where = find_network_nl(after, inbuf);
+
+	  if( where >= 0 ) {
+
+	    //grab the info 	
+
+	  }
+        }
+      }
+    }
+  }
+}
+
+
+
