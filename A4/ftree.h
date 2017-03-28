@@ -6,6 +6,7 @@
 #define _FTREE_H_
 
 #define MAXPATH 255
+#define HASH_SIZE 8
 #define MISMATCH 1
 #define MATCH 2
 #define MATCH_ERROR 3

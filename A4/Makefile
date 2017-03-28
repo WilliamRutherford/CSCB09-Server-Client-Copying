@@ -1,5 +1,6 @@
-FLAGS = -Wall -std=gnu99
 DEPENDENCIES = hash.h ftree.h
+PORT = 6969
+FLAGS = -Wall -std=gnu99 -DPORT=$(PORT)
 
 %.o: %.c ${DEPENDENCIES}
 	gcc ${FLAGS} -c $<
