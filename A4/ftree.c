@@ -418,14 +418,47 @@ int fcopy_client(char *src_path, char *dest_path, char *host, int port){
 	peer.sin_family = AF_INET;
 	peer.sin_port = htons(port);
 
-	// gets address for source 
-	if (inet_pton(AF_INET, host ,&peer.sin_addr) == -1){
-		perror("inet_pton does not work");
-	}
-	//
-	if ((con = connect(sock, (struct sockaddr *)&peer, sizeof(peer))) == -1){
-		perror("client cannot connect");
-	}
+  int listenfd = setup();
+
+  int fd; //file descriptor
+  int nbytes; //number of bytes read
+  char buf[512];
+  int inbuf; //bytes currently in buffer
+  int room;  //room left in buffer
+  char *after; //pointer to position after valid data
+  int where; //location of network newline
+  struct fileinfo *current_info = malloc(sizeof(struct fileinfo));
+  
+
+  struct sockaddr_in peer; //the socket address into the server
+  socklen_t socklen; //length of the socket
+ 
+  socklen = sizeof(peer);
+
+  if((fd = accept(listenfd, (struct sockaddr *)&peer, &socklen)) < 0 ){
+ 
+    perror("error acceptiong");
+
+  } else {
+
+    while(1){
+
+      if((fd = accept(listenfd, (struct sockaddr *)&peer, &socklen)) < 0 ){
+
+        perror("error accepting");
+
+      } else { //accepted
+
+        printf("New connection on port %d\n", ntohs(peer.sin_port));
+
+        //start recieving message
+        inbuf = 0; //empty
+        room = sizeof(buf);
+        after = buf; //set tapehead to start of buffer
+      
+        while((nbytes = read(fd, after, room)) > 0 ) {
+
+	  inbuf = nbytes;
 	
 	returnvalue = fcopy_client_helper(src_path, dest_path, host, port, sock);
 	return returnvalue;
