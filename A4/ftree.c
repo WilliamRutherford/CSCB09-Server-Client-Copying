@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
@@ -176,6 +177,7 @@ void print_ftree(struct TreeNode *root) {
 // }
 */
 
+/*
 int copy_ftree(const char *src, const char *dest) {
     // if source or destinatoin does not exist
     struct stat *sourcefile = malloc(sizeof(struct stat));
@@ -213,12 +215,12 @@ int copy_ftree(const char *src, const char *dest) {
    // printf("INFO: %s is regular file \n", src);
         bool writefile = true;
         directory = opendir(dest);
-	if( directory == NULL ){
-	    //printf("failed to open directory.\n");
-	    perror("failed to open a directory.\n");
-	    exit(-1);
+		if( directory == NULL ){
+	    	//printf("failed to open directory.\n");
+	    	perror("failed to open a directory.\n");
+	    	exit(-1);
 
-	}
+		}
         while((dir_contents = readdir(directory)) != NULL){
 	    //printf("currently comparing %s and %s \n", src_name, dir_contents->d_name);
             if (strcmp(dir_contents -> d_name, src_name) == 0){ // if they have the same name           
@@ -255,10 +257,6 @@ int copy_ftree(const char *src, const char *dest) {
                 rewind(f1);
             //void *buffer = malloc(100);
             //printf("code reached point where it starts to copy file data \n");
-                /*while((fread(buffer, 1, sizeof(buffer), f1) != 0)){
-                    fwrite(buffer, 1, sizeof(buffer), f2); // rewrtie the entire fucken file
-            
-            */
 	    //printf("about to write %s to dest\n", src);
                 int curr;
                 while((curr = fgetc(f1)) != EOF){
@@ -351,7 +349,6 @@ int copy_ftree(const char *src, const char *dest) {
 		    exit(-1);
                 }
             }
-        }
 	//printf("%s -- parent forks: %d sum of child exit codes: %d \n", src, parent_forks, child_processes);    
         if(errors > 0){
 		return -(child_processes + 1);
@@ -363,85 +360,73 @@ int copy_ftree(const char *src, const char *dest) {
 
     return 1; //exit(0) makes entire program exit causing it to only be able to read one element in a directory
 }
+*/
+int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, int sock){
+	struct fileinfo info;
+	DIR *directory;
+	struct dirent *dir_contents;
+    struct stat *sourcefile = malloc(sizeof(struct stat));
 
-int fcopy_client(char *src_path, char*dest_path, char *host, int port){
-
-
-    return 0;
-
-}
-
-int find_network_nl(char *mesg, int mesg_size){
-
-  for(int i = 0; i < mesg_size ; i++){
-
-     if(mesg[i] == '\r'){
-
-	return i;
-
-     }
-  }
-
-  return -1;
-
-}
-
-void fcopy_server(int port){
-
-  listenfd = setup();
-
-  int fd; //file descriptor
-  int nbytes; //number of bytes read
-  char buf[512];
-  int inbuf; //bytes currently in buffer
-  int room;  //room left in buffer
-  char *after; //pointer to position after valid data
-  int where; //location of network newline
-  struct fileinfo *current_info = malloc(sizeof(fileinfo));
-  
-
-  struct sockaddr_in peer; //the socket address into the server
-  socklen_t socklen; //length of the socket
- 
-  socklen = sizeof(peer);
-
-  if((fd = accept(listenfd, (struct sockaddr *)&peer, &socklen)) < 0 ){
- 
-    perror("error acceptiong");
-
-  } else {
-
-    while(1){
-
-      if((fd = accept(listenfd, (struct sockaddr *)&peer, &socklen)) < 0 ){
-
-        perror("error accepting");
-
-      } else { //accepted
-
-        printf("New connection on port %d\n", ntohs(peer.sin_port));
-
-        //start recieving message
-        inbuf = 0; //empty
-        room = sizeof(buf);
-        after = buf; //set tapehead to start of buffer
-      
-        while((nbytes = read(fd, after, room)) > 0 ) {
-
-	  inbuf = nbytes;
-	
-	  where = find_network_nl(after, inbuf);
-
-	  if( where >= 0 ) {
-
-	    //grab the info 	
-
-	  }
-        }
-      }
+    if ((lstat(src_path, sourcefile)) == -1){
+    	perror("source doest not exist");
+    	exit(1);
     }
-  }
+
+    // get absolute path
+    char absolute_path[MAXPATH];
+    // fill in struct filepath
+    strcpy(info.path, realpath(src_path, absolute_path));
+    info.mode = sourcefile->st_mode;
+    info.size = (size_t)sourcefile->st_size;
+    if (S_ISREG(sourcefile -> st_mode)){
+    	FILE *f1 = fopen(src_path, "rb");
+    	strcpy(info.hash ,hash(f1));
+    	fclose(f1);
+	}
+    //write to the server
+    write(sock, &info, sizeof(struct fileinfo));
+
+    // recieve messages
+
+    //check if source is a directory
+    if (S_ISDIR(sourcefile -> st_mode)){
+    	directory = opendir(src_path);
+		if( directory == NULL ){
+	    	//printf("failed to open directory.\n");
+	    	perror("failed to open a directory.\n");
+	    	exit(-1);
+
+		}
+		while((dir_contents = readdir(directory)) != NULL){ // recursive calls on all directory contents
+			fcopy_client_helper(concat(concat(src_path,"/"),dir_contents -> d_name), concat(concat(dest_path,"/"),dir_contents -> d_name), host, port, sock);
+		}
+		closedir(directory);
+    }
+    return 0;
 }
+int fcopy_client(char *src_path, char *dest_path, char *host, int port){
+	int sock;
+	int con;
+	int returnvalue;
+	struct sockaddr_in peer;
 
+	if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1){
+		perror("error when calling socket");
+		exit(1);
+	}
+	// filling in info for servaddr struct
+	peer.sin_family = AF_INET;
+	peer.sin_port = htons(port);
 
-
+	// gets address for source 
+	if (inet_pton(AF_INET, host ,&peer.sin_addr) == -1){
+		perror("inet_pton does not work");
+	}
+	//
+	if ((con = connect(sock, (struct sockaddr *)&peer, sizeof(peer))) == -1){
+		perror("client cannot connect");
+	}
+	
+	returnvalue = fcopy_client_helper(src_path, dest_path, host, port, sock);
+	return returnvalue;
+}

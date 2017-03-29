@@ -1,18 +1,22 @@
 #include <stdio.h>
 #include <stdlib.h>
+#define BLOCK_SIZE 8
 
+char *hash(FILE *f) {
+    char *hash_val = malloc(BLOCK_SIZE);
+    char ch;
+    int hash_index = 0;
 
-char* hash(FILE *f) {
-	long block_size = 8;
-	int index = 0;
-	char *hash_val = malloc(block_size * sizeof(char));
-	int characterXOR;
-	while ((characterXOR = fgetc(f)) != EOF)
-	{
-		hash_val[index%block_size] = hash_val[index%block_size] ^ (char)characterXOR;
-		index += 1;
-	}
-	return hash_val;
+    for (int index = 0; index < BLOCK_SIZE; index++) {
+        hash_val[index] = '\0';
+    }
+
+    while(fread(&ch, 1, 1, f) != 0) {
+        hash_val[hash_index] ^= ch;
+        hash_index = (hash_index + 1) % BLOCK_SIZE;
+    }
+
+    return hash_val;
 }
 
 
