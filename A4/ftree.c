@@ -174,7 +174,7 @@ void print_ftree(struct TreeNode *root) {
 //     return; 
 // }
 */
-
+/*
 int copy_ftree(const char *src, const char *dest) {
     // if source or destinatoin does not exist
     struct stat *sourcefile = malloc(sizeof(struct stat));
@@ -254,10 +254,7 @@ int copy_ftree(const char *src, const char *dest) {
                 rewind(f1);
             //void *buffer = malloc(100);
             //printf("code reached point where it starts to copy file data \n");
-                /*while((fread(buffer, 1, sizeof(buffer), f1) != 0)){
-                    fwrite(buffer, 1, sizeof(buffer), f2); // rewrtie the entire fucken file
-            
-            */
+                
 	    //printf("about to write %s to dest\n", src);
                 int curr;
                 while((curr = fgetc(f1)) != EOF){
@@ -362,12 +359,76 @@ int copy_ftree(const char *src, const char *dest) {
 
     return 1; //exit(0) makes entire program exit causing it to only be able to read one element in a directory
 }
+*/
+int fcopy_client(char *src_path, char *dest_path, char *host, int port){
+	int sock;
+	int con;
+	int returnvalue;
+	struct sockaddr_in peer;
 
-int fcopy_client(char *src_path, char*dest_path, char *host, int port){
+	if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1){
+		perror("error when calling socket");
+		exit(1);
+	}
+	// filling in info for servaddr struct
+	peer.sin_family = AF_INET;
+	peer.sin_port = htons(port);
 
+	// gets address for source 
+	if (inet_pton(AF_INET, host ,&peer.sin_addr) == -1){
+		perror("inet_pton does not work");
+	}
+	//
+	if ((con = connect(sock, (struct sockaddr *)&peer, sizeof(peer))) == -1){
+		perror("client cannot connect");
+	}
+	
+	returnvalue = fcopy_client_helper(src_path, dest_path, host, port, sock);
+	return returnvalue;
+}
 
+int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, int sock){
+	struct fileinfo info;
+	DIR *directory;
+	struct dirent *dir_contents;
+    struct stat *sourcefile = malloc(sizeof(struct stat));
+
+    if ((lstat(src_path, sourcefile)) == -1){
+    	perror("source doest not exist");
+    	exit(1);
+    }
+
+    // get absolute path
+    char absolute_path[MAXPATH];
+    // fill in struct filepath
+    strcpy(info.path, realpath(src_path, absolute_path));
+    info.mode = sourcefile->st_mode;
+    info.size = (size_t)sourcefile->st_size;
+    if (S_ISREG(sourcefile -> st_mode)){
+    	FILE *f1 = fopen(src_path, "rb");
+    	strcpy(info.hash ,hash(f1));
+    	fclose(f1);
+	}
+    //write to the server
+    write(sock, &info, sizeof(struct fileinfo));
+
+    // recieve messages
+
+    //check if source is a directory
+    if (S_ISDIR(sourcefile -> st_mode)){
+    	directory = opendir(src_path);
+		if( directory == NULL ){
+	    	//printf("failed to open directory.\n");
+	    	perror("failed to open a directory.\n");
+	    	exit(-1);
+
+		}
+		while((dir_contents = readdir(directory)) != NULL){ // recursive calls on all directory contents
+			fcopy_client_helper(concat(concat(src_path,"/"),dir_contents -> d_name), concat(concat(dest_path,"/"),dir_contents -> d_name), host, port, sock);
+		}
+		closedir(directory);
+    }
     return 0;
-
 }
 
 int find_network_nl(char *mesg, int mesg_size){
