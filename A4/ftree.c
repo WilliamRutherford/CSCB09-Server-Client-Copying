@@ -489,13 +489,54 @@ int find_network_nl(char *mesg, int mesg_size){
 
 }
 
+void rewrite_file(int fd, FILE *overwrite) {
+  
+  bool over = false;
+  char buf[512];
+  char *after = buf; //tapehead in buffer
+  size_t left = sizeof(buf); //space left in buffer
+  int nbytes, where;
+  while(!over){
+
+    nbytes = read(fd, &buf, left);
+    
+    left -= nbytes;
+    after += nbytes;
+   
+    if( left == 0 ){
+
+      	fwrite(buf, sizeof(char), sizeof(buf), overwrite);
+	after = buf;
+	left = sizeof(buf);
+
+    }
+
+    where = find_network_nl(buf, sizeof(buf));
+
+    if( where >= 0 ){
+
+      over = true;
+      fwrite(buf, sizeof(char), sizeof( &(buf[where]) - buf), overwrite);
+
+    }
+  }
+}
+
 void fcopy_server(int port){
 
   int listenfd = setup();
+  /*
+  int *mismatch = &MISMATCH;
+  int *match = &MATCH;
+  int *matcherror = &MATCH_ERROR;
+  int *transmit = &TRANSMIT_OK;
+  int *trans_error = &TRANSMIT_ERROR;
+  */
+  int mesg;
 
   int fd; //file descriptor
   struct fileinfo current_info;
-  struct stat *file_lstat;
+  struct stat *file_lstat = NULL;
   
 
   struct sockaddr_in peer; //the socket address into the server
@@ -520,30 +561,59 @@ void fcopy_server(int port){
 	read(fd, &(current_info.size), sizeof(size_t));
 	read(fd, &(current_info.hash), HASH_SIZE * sizeof(char));
 
-	if(lstat(current_info.path, file_lstat) == -1){
+	if(lstat(current_info.path, file_lstat) == -1){ //doesn't exist
 
-	  write(fd, MATCH_ERROR, sizeof(int));
 
-	}
+	  if( current_info.size == 0){ //is directory
 
-	if( current_info->size == 0){ //is directory
+	    mkdir(current_info.path, current_info.mode);	
+	    mesg = MATCH;
+	    write(fd, &mesg, sizeof(int));
 
-	//check if it exists
 
+	  } else { //is file
+
+	    mesg = MISMATCH;
+	    write(fd, &mesg, sizeof(int));
+	    FILE *overwrite = fopen( current_info.path, "wb");
+
+	    //rewriting file
+
+	    rewrite_file(fd, overwrite);
+	    fclose(overwrite);
+
+	    write(fd, &mesg, sizeof(int));
+
+	  }
+
+	} else if ( S_ISREG(current_info.mode) ){ //exists as file
+
+	  FILE *check_hash = fopen(current_info.path, "rb" );
 	  
-
-	//if it does exist, check if it's a file
-
+	  char *local_hash = hash(check_hash);
+	  fclose(check_hash);
 	
-	//otherwise, do nothing
+	  if(strcmp(local_hash, current_info.hash) != 0){
 
-	} else { //is file
+	    //rewrite files
+	    mesg = MISMATCH;
+	    write(fd, &mesg, sizeof(int));
+	    FILE *overwrite = fopen( current_info.path, "wb");
+	    rewrite_file(fd, overwrite);
+	    fclose(overwrite);
+	    mesg = TRANSMIT_OK;
+	    write(fd, &mesg, sizeof(int));
 
-	  
+	  }	
+      } else { //exists as folder
 
-	}
-	
+	chmod(current_info.path, current_info.mode);
+	mesg = MATCH;
+	write(fd, &mesg, sizeof(int));
+
       }
+
+
     }
   }
 }
