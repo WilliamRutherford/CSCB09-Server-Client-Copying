@@ -49,6 +49,7 @@ int setup(void) {
     exit(1);
   }
   return listenfd;
+}
 
 char* concat(const char *s1, const char *s2)
 {
@@ -306,7 +307,7 @@ int copy_ftree(const char *src, const char *dest) {
                 if (dir_contents -> d_type ==  DT_REG){
                     //printf("recursive call on %s in src, regular file \n", dir_contents ->d_name);
                     copy_ftree(concat(concat(src,"/"),dir_contents -> d_name), dest_file ); //need actual file path for both arguements
-                } else if (dir_contents -> d_type == DT_DIR){ // if sub directory in source directory is also a directory0
+                } else if (dir_contents -> d_type == DT_DIR){ // if sub directory in source directory is also a directory
                     //printf("recursive call on %s in src, directory \n", dir_contents -> d_name);
                     int result = fork();
                     if (result == -1){
@@ -360,6 +361,92 @@ int copy_ftree(const char *src, const char *dest) {
     return 1; //exit(0) makes entire program exit causing it to only be able to read one element in a directory
 }
 */
+
+int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, int sock){
+	struct fileinfo info;
+	FILE *f1;
+	DIR *directory;
+	struct dirent *dir_contents;
+    struct stat *sourcefile = malloc(sizeof(struct stat));
+
+    if ((lstat(src_path, sourcefile)) == -1){
+    	perror("source doest not exist");
+    	exit(1);
+    }
+
+    // get absolute path
+    char absolute_path[MAXPATH];
+    // fill in struct filepath
+    strcpy(info.path, realpath(src_path, absolute_path));
+    info.mode = sourcefile->st_mode;
+    info.size = (size_t)sourcefile->st_size;
+
+    if (S_ISREG(sourcefile -> st_mode)){
+    	f1 = fopen(src_path, "rb");
+    	strcpy(info.hash ,hash(f1));
+	}
+    //write to the server
+    write(sock, &(info.path), MAXPATH * sizeof(char));
+    write(sock, &(info.mode), sizeof(mode_t));
+   	write(sock, &(info.size), sizeof(size_t));
+   	write(sock, &(info.hash), HASH_SIZE * sizeof(char));
+
+    // recieve messages match or mismatch
+    int storage;
+    read(sock, &storage, sizeof(int));
+
+    if (storage == 1){ //mismatch
+    	if (S_ISREG(sourcefile -> st_mode)){ //sends file data into server side
+    		int bytes_read = 0;
+    		int bytes_written;
+    		while (fgetc(f1) != EOF){
+    			bytes_read ++;
+    		}
+    		char *p = 0;
+    		p = malloc(sizeof(char) *bytes_read);
+    		while (bytes_read > 0){
+    			bytes_written = write(sock, f1, bytes_read); // reading one byte at a time
+    			if (bytes_written <= 0){
+    				perror("cannot write file data, transmit error");
+    				exit(1);
+    			}
+    			bytes_read -= bytes_written;
+    			p += bytes_written;
+
+    		}
+    		free(p);
+        }
+        fclose(f1);
+    }	
+    else if (storage == 3){ //match error
+    	perror("Files are incompatible");
+    	exit(1);
+    }
+    else if (storage == 5) //transmit error
+    	perror("Transmit error on file %s");
+    	exit(1);
+    //check if source is a directory
+    if (S_ISDIR(sourcefile -> st_mode)){
+    	directory = opendir(src_path);
+    	
+		if( directory == NULL ){
+	    	//printf("failed to open directory.\n");
+	    	perror("failed to open a directory.\n");
+	    	exit(-1);
+
+		}
+		while((dir_contents = readdir(directory)) != NULL){ // recursive calls on all directory contents
+			// check if directory starts with "."
+			if (dir_contents -> d_name[0] != '.'){
+
+				fcopy_client_helper(concat(concat(src_path,"/"),dir_contents -> d_name), concat(concat(dest_path,"/"),dir_contents -> d_name), host, port, sock);
+			}
+		}
+		closedir(directory);
+    }
+    return 0;
+}
+
 int fcopy_client(char *src_path, char *dest_path, char *host, int port){
 	int sock;
 	int con;
@@ -387,50 +474,6 @@ int fcopy_client(char *src_path, char *dest_path, char *host, int port){
 	return returnvalue;
 }
 
-int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, int sock){
-	struct fileinfo info;
-	DIR *directory;
-	struct dirent *dir_contents;
-    struct stat *sourcefile = malloc(sizeof(struct stat));
-
-    if ((lstat(src_path, sourcefile)) == -1){
-    	perror("source doest not exist");
-    	exit(1);
-    }
-
-    // get absolute path
-    char absolute_path[MAXPATH];
-    // fill in struct filepath
-    strcpy(info.path, realpath(src_path, absolute_path));
-    info.mode = sourcefile->st_mode;
-    info.size = (size_t)sourcefile->st_size;
-    if (S_ISREG(sourcefile -> st_mode)){
-    	FILE *f1 = fopen(src_path, "rb");
-    	strcpy(info.hash ,hash(f1));
-    	fclose(f1);
-	}
-    //write to the server
-    write(sock, &info, sizeof(struct fileinfo));
-
-    // recieve messages
-
-    //check if source is a directory
-    if (S_ISDIR(sourcefile -> st_mode)){
-    	directory = opendir(src_path);
-		if( directory == NULL ){
-	    	//printf("failed to open directory.\n");
-	    	perror("failed to open a directory.\n");
-	    	exit(-1);
-
-		}
-		while((dir_contents = readdir(directory)) != NULL){ // recursive calls on all directory contents
-			fcopy_client_helper(concat(concat(src_path,"/"),dir_contents -> d_name), concat(concat(dest_path,"/"),dir_contents -> d_name), host, port, sock);
-		}
-		closedir(directory);
-    }
-    return 0;
-}
-
 int find_network_nl(char *mesg, int mesg_size){
 
   for(int i = 0; i < mesg_size ; i++){
@@ -448,16 +491,16 @@ int find_network_nl(char *mesg, int mesg_size){
 
 void fcopy_server(int port){
 
-  listenfd = setup();
+  int listenfd = setup();
 
   int fd; //file descriptor
- int nbytes; //number of bytes read
+  int nbytes; //number of bytes read
   char buf[512];
   int inbuf; //bytes currently in buffer
   int room;  //room left in buffer
   char *after; //pointer to position after valid data
   int where; //location of network newline
-  struct fileinfo *current_info = malloc(sizeof(fileinfo));
+  struct fileinfo current_info;
   
 
   struct sockaddr_in peer; //the socket address into the server
