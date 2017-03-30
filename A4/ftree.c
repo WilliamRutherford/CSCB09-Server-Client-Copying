@@ -368,6 +368,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 	DIR *directory;
 	struct dirent *dir_contents;
     struct stat *sourcefile = malloc(sizeof(struct stat));
+    printf("source path: %s \n", src_path);
 
     if ((lstat(src_path, sourcefile)) == -1){
     	perror("source doest not exist");
@@ -378,32 +379,37 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     char absolute_path[MAXPATH];
     // fill in struct filepath
     strcpy(info.path, realpath(src_path, absolute_path));
+    printf("absolute src path: %s \n", absolute_path);
     info.mode = sourcefile->st_mode;
+    printf("mode: %lu \n", info.mode);
     info.size = (size_t)sourcefile->st_size;
-
+    printf("size: %lu \n", info.size);
+    printf("path, mode, size complete \n");
+    
     if (S_ISREG(sourcefile -> st_mode)){
     	f1 = fopen(src_path, "rb");
     	strcpy(info.hash ,hash(f1));
 	}
     //write to the server
+    printf("Client is sending info for %s to server\n", info.path);
     write(sock, &(info.path), MAXPATH * sizeof(char));
     write(sock, &(info.mode), sizeof(mode_t));
    	write(sock, &(info.size), sizeof(size_t));
    	write(sock, &(info.hash), HASH_SIZE * sizeof(char));
-
+    printf("Client has sent file info for %s \n", info.path);
     // recieve messages match or mismatch
     int storage;
     read(sock, &storage, sizeof(int));
 
     if (storage == 1){ //mismatch
     	if (S_ISREG(sourcefile -> st_mode)){ //sends file data into server side
-    		int bytes_read = 0;
-    		int bytes_written;
-    		while (fgetc(f1) != EOF){
-    			bytes_read ++;
+    		/*
+		p = malloc(sizeof(char));
+	        *p = NULL;
+
+    		while (p != EOF){
+    			p = fgetc(f1);
     		}
-    		char *p = 0;
-    		p = malloc(sizeof(char) *bytes_read);
     		while (bytes_read > 0){
     			bytes_written = write(sock, f1, bytes_read); // reading one byte at a time
     			if (bytes_written <= 0){
@@ -415,6 +421,14 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 
     		}
     		free(p);
+		*/
+		char *p = NULL;
+		while(*p != EOF){
+		  *p = fgetc(f1);
+		  write(sock, p, sizeof(p));
+		}
+		char carriage = '\r';
+		write(sock, &carriage, sizeof(carriage));
         }
         fclose(f1);
     }	
@@ -557,9 +571,13 @@ void fcopy_server(int port){
 	//done reading struct to current_info
 	
 	read(fd, &(current_info.path), MAXPATH * sizeof(char));
+        printf("recieved path: %s\n", current_info.path);
 	read(fd, &(current_info.mode), sizeof(mode_t));
+	printf("recieved mode: %lu\n", current_info.mode);
 	read(fd, &(current_info.size), sizeof(size_t));
+	printf("recieved size: %lu\n", current_info.size);
 	read(fd, &(current_info.hash), HASH_SIZE * sizeof(char));
+        printf("recieved all info for %s \n", current_info.path);
 
 	if(lstat(current_info.path, file_lstat) == -1){ //doesn't exist
 
