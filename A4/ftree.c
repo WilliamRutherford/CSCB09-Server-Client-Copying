@@ -494,13 +494,8 @@ void fcopy_server(int port){
   int listenfd = setup();
 
   int fd; //file descriptor
-  int nbytes; //number of bytes read
-  char buf[512];
-  int inbuf; //bytes currently in buffer
-  int room;  //room left in buffer
-  char *after; //pointer to position after valid data
-  int where; //location of network newline
   struct fileinfo current_info;
+  struct stat *file_lstat;
   
 
   struct sockaddr_in peer; //the socket address into the server
@@ -516,31 +511,38 @@ void fcopy_server(int port){
 
     while(1){
 
-      if((fd = accept(listenfd, (struct sockaddr *)&peer, &socklen)) < 0 ){
-
-        perror("error accepting");
-
-      } else { //accepted
-
         printf("New connection on port %d\n", ntohs(peer.sin_port));
 
-        //start recieving message
-        inbuf = 0; //empty
-        room = sizeof(buf);
-        after = buf; //set tapehead to start of buffer
-      
-        while((nbytes = read(fd, after, room)) > 0 ) {
-
-	  inbuf = nbytes;
+	//done reading struct to current_info
 	
-	  where = find_network_nl(after, inbuf);
+	read(fd, &(current_info.path), MAXPATH * sizeof(char));
+	read(fd, &(current_info.mode), sizeof(mode_t));
+	read(fd, &(current_info.size), sizeof(size_t));
+	read(fd, &(current_info.hash), HASH_SIZE * sizeof(char));
 
-	  if( where >= 0 ) {
+	if(lstat(current_info.path, file_lstat) == -1){
 
-	    //grab the info 	
+	  write(fd, MATCH_ERROR, sizeof(int));
 
-	  }
-        }
+	}
+
+	if( current_info->size == 0){ //is directory
+
+	//check if it exists
+
+	  
+
+	//if it does exist, check if it's a file
+
+	
+	//otherwise, do nothing
+
+	} else { //is file
+
+	  
+
+	}
+	
       }
     }
   }
