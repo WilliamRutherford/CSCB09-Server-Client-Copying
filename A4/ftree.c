@@ -381,7 +381,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     strcpy(info.path, realpath(src_path, absolute_path));
     printf("absolute src path: %s \n", absolute_path);
     info.mode = sourcefile->st_mode;
-    printf("mode: %lu \n", info.mode);
+    printf("mode: %d \n", info.mode);
     info.size = (size_t)sourcefile->st_size;
     printf("size: %lu \n", info.size);
     printf("path, mode, size complete \n");
@@ -411,7 +411,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     			p = fgetc(f1);
     		}
     		while (bytes_read > 0){
-    			bytes_written = write(sock, f1, bytes_read); // reading one byte at a time
+    			bytes_written = write(sock, f1, sizeof(p)); // reading one byte at a time
     			if (bytes_written <= 0){
     				perror("cannot write file data, transmit error");
     				exit(1);
@@ -453,7 +453,8 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 			// check if directory starts with "."
 			if (dir_contents -> d_name[0] != '.'){
 
-				fcopy_client_helper(concat(concat(src_path,"/"),dir_contents -> d_name), concat(concat(dest_path,"/"),dir_contents -> d_name), host, port, sock);
+				fcopy_client_helper(concat(concat(src_path,"/"),dir_contents -> d_name), concat(concat(dest_path,"/"),src_path), host, port, sock);
+
 			}
 		}
 		closedir(directory);
@@ -573,7 +574,7 @@ void fcopy_server(int port){
 	read(fd, &(current_info.path), MAXPATH * sizeof(char));
         printf("recieved path: %s\n", current_info.path);
 	read(fd, &(current_info.mode), sizeof(mode_t));
-	printf("recieved mode: %lu\n", current_info.mode);
+	printf("recieved mode: %d\n", current_info.mode);
 	read(fd, &(current_info.size), sizeof(size_t));
 	printf("recieved size: %lu\n", current_info.size);
 	read(fd, &(current_info.hash), HASH_SIZE * sizeof(char));
@@ -630,7 +631,6 @@ void fcopy_server(int port){
 	write(fd, &mesg, sizeof(int));
 
       }
-
 
     }
   }
