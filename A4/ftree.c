@@ -378,11 +378,15 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     // get absolute path
     char absolute_path[MAXPATH];
     // fill in struct filepath
-    strcpy(info.path, realpath(src_path, absolute_path));
+    strcpy(info.path, concat(concat(dest_path, "/"), src_path));
     printf("absolute src path: %s \n", absolute_path);
     info.mode = sourcefile->st_mode;
     printf("mode: %d \n", info.mode);
-    info.size = (size_t)sourcefile->st_size;
+    if( S_ISDIR(sourcefile -> st_mode) ){
+	info.size = 0;
+    } else {
+        info.size = (size_t)sourcefile->st_size;
+    }
     printf("size: %lu \n", info.size);
     printf("path, mode, size complete \n");
     
@@ -394,14 +398,17 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     printf("Client is sending info for %s to server\n", info.path);
     write(sock, &(info.path), MAXPATH * sizeof(char));
     write(sock, &(info.mode), sizeof(mode_t));
-   	write(sock, &(info.size), sizeof(size_t));
-   	write(sock, &(info.hash), HASH_SIZE * sizeof(char));
+    write(sock, &(info.size), sizeof(size_t));
+    write(sock, &(info.hash), HASH_SIZE * sizeof(char));
     printf("Client has sent file info for %s \n", info.path);
     // recieve messages match or mismatch
     int storage;
-    read(sock, &storage, sizeof(int));
+    printf("reading server message\n");
 
-    if (storage == 1){ //mismatch
+    read(sock, &storage, sizeof(int));
+    printf("server message: %d \n", storage);
+
+    if (storage == MISMATCH){ //mismatch
     	if (S_ISREG(sourcefile -> st_mode)){ //sends file data into server side
     		/*
 		p = malloc(sizeof(char));
@@ -422,25 +429,39 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     		}
     		free(p);
 		*/
-		char *p = NULL;
-		while(*p != EOF){
-		  *p = fgetc(f1);
-		  write(sock, p, sizeof(p));
+		printf("about to set p\n");
+		int p = fgetc(f1);
+		write(sock, &p, sizeof(p));
+		printf("while loop starting\n");
+		while(p != EOF){
+		  printf("reading from file\n");
+		  p = fgetc(f1);
+		  write(sock, &p, sizeof(p));
 		}
+		char end_of_file = EOF;
+		write(sock, &end_of_file, sizeof(end_of_file));
+	
 		char carriage = '\r';
 		write(sock, &carriage, sizeof(carriage));
-        }
+		printf("done sending file");
+        } else {
+
+		printf("error finding file type\n");
+
+	}
         fclose(f1);
     }	
-    else if (storage == 3){ //match error
+    else if (storage == MATCH_ERROR){ //match error
     	perror("Files are incompatible");
     	exit(1);
     }
-    else if (storage == 5) //transmit error
+    else if (storage == TRANSMIT_ERROR){ //transmit error
     	perror("Transmit error on file %s");
     	exit(1);
+    }
     //check if source is a directory
     if (S_ISDIR(sourcefile -> st_mode)){
+	printf("opening src directory\n");
     	directory = opendir(src_path);
     	
 		if( directory == NULL ){
@@ -452,8 +473,8 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 		while((dir_contents = readdir(directory)) != NULL){ // recursive calls on all directory contents
 			// check if directory starts with "."
 			if (dir_contents -> d_name[0] != '.'){
-
-				fcopy_client_helper(concat(concat(src_path,"/"),dir_contents -> d_name), concat(concat(dest_path,"/"),src_path), host, port, sock);
+				printf("srcpath: %s destpath: %s \n", src_path, dest_path);
+				fcopy_client_helper(concat(concat(src_path,"/"),dir_contents -> d_name), dest_path, host, port, sock);
 
 			}
 		}
@@ -511,15 +532,16 @@ void rewrite_file(int fd, FILE *overwrite) {
   char *after = buf; //tapehead in buffer
   size_t left = sizeof(buf); //space left in buffer
   int nbytes, where;
+  printf("beginning to rewrite file on server\n");
   while(!over){
-
-    nbytes = read(fd, &buf, left);
+    //printf("it's not over");
+    nbytes = read(fd, after, left);
     
     left -= nbytes;
     after += nbytes;
    
     if( left == 0 ){
-
+	printf("reached end of buffer\n");
       	fwrite(buf, sizeof(char), sizeof(buf), overwrite);
 	after = buf;
 	left = sizeof(buf);
@@ -529,7 +551,7 @@ void rewrite_file(int fd, FILE *overwrite) {
     where = find_network_nl(buf, sizeof(buf));
 
     if( where >= 0 ){
-
+      printf("network newline found\n");
       over = true;
       fwrite(buf, sizeof(char), sizeof( &(buf[where]) - buf), overwrite);
 
@@ -567,8 +589,6 @@ void fcopy_server(int port){
 
     while(1){
 
-        printf("New connection on port %d\n", ntohs(peer.sin_port));
-
 	//done reading struct to current_info
 	
 	read(fd, &(current_info.path), MAXPATH * sizeof(char));
@@ -582,26 +602,28 @@ void fcopy_server(int port){
 
 	if(lstat(current_info.path, file_lstat) == -1){ //doesn't exist
 
-
+	  printf("File doesn't exist on server\n");
 	  if( current_info.size == 0){ //is directory
 
+	    printf("File is a directory\n");
 	    mkdir(current_info.path, current_info.mode);	
 	    mesg = MATCH;
 	    write(fd, &mesg, sizeof(int));
 
-
 	  } else { //is file
 
+	    printf("File is a file\n");
 	    mesg = MISMATCH;
 	    write(fd, &mesg, sizeof(int));
 	    FILE *overwrite = fopen( current_info.path, "wb");
 
 	    //rewriting file
-
+	    printf("starting to write file on server\n");
 	    rewrite_file(fd, overwrite);
 	    fclose(overwrite);
-
+	    mesg = TRANSMIT_OK;
 	    write(fd, &mesg, sizeof(int));
+	    printf("file written to server");
 
 	  }
 
