@@ -393,6 +393,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     if (S_ISREG(sourcefile -> st_mode)){
     	f1 = fopen(src_path, "rb");
     	strcpy(info.hash ,hash(f1));
+	rewind(f1);
 	}
     //write to the server
     printf("Client is sending info for %s to server\n", info.path);
@@ -429,21 +430,31 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     		}
     		free(p);
 		*/
+		int p[32];
 		printf("about to set p\n");
-		int p = fgetc(f1);
-		write(sock, &p, sizeof(p));
 		printf("while loop starting\n");
+		/*
 		while(p != EOF){
 		  printf("reading from file\n");
 		  p = fgetc(f1);
 		  write(sock, &p, sizeof(p));
 		}
+		*/
+		clearerr(f1);
+		while(!feof(f1)){
+
+		  fread(&p, 1, sizeof(p), f1);
+		  write(sock, &p, sizeof(p));
+
+		}
+		clearerr(f1);
+	
 		char end_of_file = EOF;
 		write(sock, &end_of_file, sizeof(end_of_file));
 	
 		char carriage = '\r';
 		write(sock, &carriage, sizeof(carriage));
-		printf("done sending file");
+		printf("done sending file\n");
         } else {
 
 		printf("error finding file type\n");
@@ -553,7 +564,7 @@ void rewrite_file(int fd, FILE *overwrite) {
     if( where >= 0 ){
       printf("network newline found\n");
       over = true;
-      fwrite(buf, sizeof(char), sizeof( &(buf[where]) - buf), overwrite);
+      fwrite(buf, sizeof(char), sizeof( &(buf[where-1]) - buf), overwrite);
 
     }
   }
