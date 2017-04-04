@@ -368,7 +368,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 	DIR *directory;
 	struct dirent *dir_contents;
     struct stat *sourcefile = malloc(sizeof(struct stat));
- 
+    printf("source path: %s \n", src_path);
 
     if ((lstat(src_path, sourcefile)) == -1){
     	perror("source doest not exist");
@@ -376,15 +376,20 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     }
 
     // get absolute path
-    char absolute_path[MAXPATH];
+    //char absolute_path[MAXPATH];
     // fill in struct filepath
-    strcpy(info.path, concat(concat(dest_path, "/"), src_path));
-
+    //strcpy(info.path, concat(concat(dest_path, "/"), src_path));
+    //printf("absolute src path: %s \n", absolute_path);
+    //printf("figuring out directory in destination\n");
+    strcpy(info.path, concat(concat(dest_path, "/"), src_path ));
+    //printf("path found\n");
     info.mode = sourcefile->st_mode;
-
+    //printf("mode: %d \n", info.mode);
     if( S_ISDIR(sourcefile -> st_mode) ){
 	info.size = 0;
     } 
+    //printf("size: %lu \n", info.size);
+    printf("path, mode, size complete \n");
     
     if (S_ISREG(sourcefile -> st_mode)){
     	f1 = fopen(src_path, "rb");
@@ -394,16 +399,28 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 	rewind(f1);
 	}
     //write to the server
+    //printf("Client is sending info for %s to server\n", info.path);
+    if( strcmp(info.path, "") == 0){
+	perror("error on file path");
+	exit(1);
+    }
     write(sock, &(info.path), MAXPATH * sizeof(char));
+    printf("sent path: %s\n", info.path);
     write(sock, &(info.mode), sizeof(mode_t));
+    //printf("sent mode: %lu\n", info.mode);
     write(sock, &(info.size), sizeof(size_t));
+    printf("sent size: %lu\n", info.size);
     write(sock, &(info.hash), HASH_SIZE * sizeof(char));
+    //printf("hash of length %lu sent\n", HASH_SIZE);
+    //printf("Client has sent file info for %s \n", info.path);
     // recieve messages match or mismatch
     int storage;
+    //printf("reading server message\n");
 
     read(sock, &storage, sizeof(int));
+    printf("server message: %d \n", storage);
 
-    if (storage == MISMATCH){ //mismatch
+    if (storage == MISMATCH){ //mismatch = 1
     	if (S_ISREG(sourcefile -> st_mode)){ //sends file data into server side
     		/*
 		p = malloc(sizeof(char));
@@ -424,8 +441,9 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     		}
     		free(p);
 		*/
-		char p = NULL;
-
+		//char p = NULL;
+		//printf("about to set p\n");
+		//printf("while loop starting\n");
 		/*
 		while(p != EOF){
 		  printf("reading from file\n");
@@ -433,29 +451,57 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 		  write(sock, &p, sizeof(p));
 		}
 		
-		*/
+		
 		for(int i = 0 ; i < info.size ; i++){
-		  fread(&p, 1, 1, f1);
+		  printf("ran through this for loop\n");
+		  fread(&p, 1, info.size, f1);
 		  write(sock, &p, sizeof(p));
 
 		}
+		*/
+		char buf[512];
+		size_t left = sizeof(buf);
+		int nbytes;
+		//int write_bytes;
+		char *after = buf;
+
+		while( ( nbytes = fread(after, sizeof(char), left, f1 )) > 0 ){
+
+		    left -= nbytes;
+		    after += nbytes;
+
+		    //printf("client left: %d\n", (int) left);
+
+		    if(left <= 0){
+
+			write(sock, buf, sizeof(buf));
+			after = buf;
+			left = sizeof(buf);
+
+		    }
+
+		}
+
+		write(sock, buf, sizeof(buf));
+		
 		
 		/*
 		char end_of_file = EOF;
 		write(sock, &end_of_file, sizeof(end_of_file));
 		*/
+		
 		char carriage = '\r';
 		write(sock, &carriage, sizeof(carriage));
-	
+		//printf("done sending file\n");
 		
 		read(sock, &storage, sizeof(int));
-
+		printf("server message: %d\n", storage);
         } else {
 
-		printf("error finding file type\n");
+		perror("error finding file type\n");
+		
 
 	}
-
         fclose(f1);
     }	
     else if (storage == MATCH_ERROR){ //match error
@@ -468,7 +514,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     }
     //check if source is a directory
     if (S_ISDIR(sourcefile -> st_mode)){
-
+	printf("opening src directory\n");
     	directory = opendir(src_path);
     	
 		if( directory == NULL ){
@@ -480,7 +526,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 		while((dir_contents = readdir(directory)) != NULL){ // recursive calls on all directory contents
 			// check if directory starts with "."
 			if (dir_contents -> d_name[0] != '.'){
-
+				//printf("srcpath: %s destpath: %s \n", src_path, dest_path);
 				fcopy_client_helper(concat(concat(src_path,"/"),dir_contents -> d_name), dest_path, host, port, sock);
 			
 			}
@@ -503,7 +549,7 @@ int fcopy_client(char *src_path, char *dest_path, char *host, int port){
 	// filling in info for servaddr struct
 	peer.sin_family = AF_INET;
 	peer.sin_port = htons(port);
-
+	//printf("connected on port %d\n", peer.sin_port);
 	// gets address for source 
 	if (inet_pton(AF_INET, host ,&peer.sin_addr) == -1){
 		perror("inet_pton does not work");
@@ -533,23 +579,73 @@ int find_network_nl(char *mesg, int mesg_size){
 
 }
 
+void rewrite_sized_file( int fd, FILE *overwrite, int size ){
+
+  char buf[512];
+  char *after = buf;
+  int left = sizeof(buf);
+  int nbytes = 0, where = 0;
+  bool done = false;
+
+  while( ((nbytes = read(fd, after, size + 1)) != 0) && !done ){
+    
+    if( nbytes == size + 1){
+	done = true;
+	fwrite(buf, sizeof(char), size, overwrite);
+    } else {
+      after += nbytes;
+      left  -= nbytes;
+    
+    
+      printf("nbytes: %d\n", nbytes);
+    
+      if(left <= 0 ){
+
+        //printf("reached end of buffer\n");
+        fwrite(buf, sizeof(char), sizeof(buf), overwrite);
+        after = buf;
+        left = sizeof(buf);
+
+      } 
+
+      where = find_network_nl( buf, sizeof(buf));
+ 
+      if(where == 0){
+
+        //printf("for some reason, nl is at beginning of buffer\n"); 
+        after++;
+
+      } else if (where > 0) {
+
+        //printf("nl found at %d\n", where);
+      
+        fwrite(buf, sizeof(char), (where -1)*sizeof(char), overwrite);
+        done = true;
+
+      }
+
+    }
+
+  }
+}
+
 void rewrite_file(int fd, FILE *overwrite) {
   
-  bool over = false;
+  //bool over = false;
   char buf[512];
   char *after = buf; //tapehead in buffer
-  size_t left = sizeof(buf); //space left in buffer
+  int left = (int) sizeof(buf); //space left in buffer
   int nbytes, where;
-
-  while(!over){
- 
-    nbytes = read(fd, after, left);
-
+  //printf("beginning to rewrite file on server\n");
+  while( (nbytes = read(fd, after, left)) != 0 ){
+    //printf("it's not over\n");
+    //nbytes = read(fd, after, left);
+    //printf("nbytes: %d\n", nbytes);
     left -= nbytes;
     after += nbytes;
-
+    //printf("left: %lu\n", left);
     if( left <= 0 ){
-
+	//printf("reached end of buffer\n");
       	fwrite(buf, sizeof(char), sizeof(buf), overwrite);
 	after = buf;
 	left = sizeof(buf);
@@ -558,11 +654,17 @@ void rewrite_file(int fd, FILE *overwrite) {
 
     where = find_network_nl(buf, sizeof(buf));
 
-    if( where >= 0 ){
- 
-      over = true;
-      fwrite(buf, sizeof(char), (after-buf+1)*sizeof(char), overwrite);
-      //buf[where] = '\0';
+    if( where > 0 ){
+      //printf("network newline found at %d\n", where);
+      //printf("beginning of buf: %c\n", buf[0]);
+      //over = true;
+      fwrite(buf, sizeof(char), (where - 1)*sizeof(char), overwrite);
+      //write from beginning of buffer to just before where
+
+    } else if( where == 0) {
+
+      //printf("for some reason, new line is at beginning of buffer\n");
+      after++;
 
     }
   }
@@ -573,7 +675,7 @@ void fcopy_server(int port){
   int listenfd = setup();
   /*
   int *mismatch = &MISMATCH;
-  int *match = &MATCH;
+  int *match = &MATC;
   int *matcherror = &MATCH_ERROR;
   int *transmit = &TRANSMIT_OK;
   int *trans_error = &TRANSMIT_ERROR;
@@ -592,64 +694,95 @@ void fcopy_server(int port){
 
   if((fd = accept(listenfd, (struct sockaddr *)&peer, &socklen)) < 0 ){
  
+    //printf("error accepting\n");
     perror("error acceptiong");
 
   } else {
 
+    printf("starting loop\n");
     while(1){
 
 	//done reading struct to current_info
-	 	
-	if( read(fd, &(current_info.path), MAXPATH * sizeof(char)) <0){
-		perror("ERROR1");
+	int nbytes = 0;	 
+	//char *char_after;
+	
+	if( (nbytes = read(fd, &(current_info.path), MAXPATH * sizeof(char))) < 0){
+		perror("path reveive error");
 	}
+        printf("recieved path: %s\n", current_info.path);
+	
+	
+	//printf("size of char: %d\n", (int) sizeof(char));
+	
+	//char_after = current_info.path;
+	//int left = sizeof(current_info.path);
+	/*
+	while( (nbytes = read(fd, &char_after, left )) > 0){
+	   printf("nbytes for path: %d\n", nbytes);
+	   left -= nbytes;
+	   char_after += nbytes;
+	   
+
+	}
+	*/
 
 	if (read(fd, &(current_info.mode), sizeof(mode_t)) < 0){
-		perror("ERROR2");
+		perror("Mode recieve error");
 	}
-
+	//printf("recieved mode: %d\n", current_info.mode);
 	if (read(fd, &(current_info.size), sizeof(size_t)) < 0){
-		perror("ERROR3");
+		perror("size recieve error");
 	}
 
-	if(read(fd, &(current_info.hash), HASH_SIZE * sizeof(char)) < 0 ){
-		perror("ERROR4");
+	if (current_info.size >= 10000000000000000 ){
+
+		perror("size is massive. Something is wrong with socket.");
+		exit(1);
+
 	}
+	printf("recieved size: %lu\n", current_info.size);
+	if(read(fd, &(current_info.hash), HASH_SIZE * sizeof(char)) < 0 ){
+		perror("hash recieve error");
+	}
+        //printf("recieved all info for %s \n", current_info.path);
+	//printf("read in info for %s\n", current_info.path);
 
 	if(lstat(current_info.path, file_lstat) == -1){ //doesn't exist
 
-
+	  //perror("File doesn't exist on server\n");
 	  if( current_info.size == 0){ //is directory
 
+	    //printf("File is a directory\n");
 	    mkdir(current_info.path, current_info.mode);	
 	    mesg = MATCH;
 	    write(fd, &mesg, sizeof(int));
+	    //printf("sent client message 2\n");
 
 	  } else { //is file
 
-
+	    //printf("File is a file\n");
 	    mesg = MISMATCH;
-
+	    //printf("message to send: %d \n", mesg);
+	    //printf("reached this fucken line 1\n");
 	    write(fd, &mesg, sizeof(int));
-
+	    //printf("reached this fucken line 2\n");
 	    FILE *overwrite = fopen( current_info.path, "wb");
-
+	    //printf("reached this fucken line 3\n");
 	    if(overwrite == NULL){
 
 
-
+		perror("file openning failed");
 		exit(1);
 
 	    }
 	    //rewriting file
-
-	    rewrite_file(fd, overwrite);
-	    rewind(overwrite);
+	    //printf("starting to write file on server\n");
+	    rewrite_sized_file(fd, overwrite, current_info.size);
 	    fclose(overwrite);
-
+	    //printf("transmit okay\n");
 	    mesg = TRANSMIT_OK;
 	    write(fd, &mesg, sizeof(int));
-
+	    //printf("file written to server\n");
 
 	  }
 
@@ -666,7 +799,7 @@ void fcopy_server(int port){
 	    mesg = MISMATCH;
 	    write(fd, &mesg, sizeof(int));
 	    FILE *overwrite = fopen( current_info.path, "wb");
-	    rewrite_file(fd, overwrite);
+	    rewrite_sized_file(fd, overwrite, current_info.size);
 	    fclose(overwrite);
 	    mesg = TRANSMIT_OK;
 	    write(fd, &mesg, sizeof(int));
