@@ -628,7 +628,7 @@ void rewrite_sized_file( int fd, FILE *overwrite, int size ){
 
   }
 }
-
+/*
 void rewrite_file(int fd, FILE *overwrite) {
   
   //bool over = false;
@@ -669,7 +669,7 @@ void rewrite_file(int fd, FILE *overwrite) {
     }
   }
 }
-
+*/
 void fcopy_server(int port){
 
   int listenfd = setup();
@@ -699,15 +699,15 @@ void fcopy_server(int port){
 
   } else {
 
-    printf("starting loop\n");
+    //printf("starting loop\n");
     while(1){
 
 	//done reading struct to current_info
 	int nbytes = 0;	 
 	//char *char_after;
 	
-	if( (nbytes = read(fd, &(current_info.path), MAXPATH * sizeof(char))) < 0){
-		perror("path reveive error");
+	if( (nbytes = read(fd, &(current_info.path), MAXPATH * sizeof(char))) <= 0){
+		perror("path receive error");
 	}
         printf("recieved path: %s\n", current_info.path);
 	
