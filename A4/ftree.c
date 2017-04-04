@@ -368,7 +368,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 	DIR *directory;
 	struct dirent *dir_contents;
     struct stat *sourcefile = malloc(sizeof(struct stat));
-    printf("source path: %s \n", src_path);
+    //printf("source path: %s \n", src_path);
 
     if ((lstat(src_path, sourcefile)) == -1){
     	perror("source doest not exist");
@@ -389,7 +389,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 	info.size = 0;
     } 
     //printf("size: %lu \n", info.size);
-    printf("path, mode, size complete \n");
+    //printf("path, mode, size complete \n");
     
     if (S_ISREG(sourcefile -> st_mode)){
     	f1 = fopen(src_path, "rb");
@@ -400,16 +400,16 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 	}
     //write to the server
     //printf("Client is sending info for %s to server\n", info.path);
-    if( strcmp(info.path, "") == 0){
+    if( info.path[0] == '\0'){
 	perror("error on file path");
 	exit(1);
     }
     write(sock, &(info.path), MAXPATH * sizeof(char));
-    printf("sent path: %s\n", info.path);
+    //printf("sent path: %s\n", info.path);
     write(sock, &(info.mode), sizeof(mode_t));
     //printf("sent mode: %lu\n", info.mode);
     write(sock, &(info.size), sizeof(size_t));
-    printf("sent size: %lu\n", info.size);
+    //printf("sent size: %lu\n", info.size);
     write(sock, &(info.hash), HASH_SIZE * sizeof(char));
     //printf("hash of length %lu sent\n", HASH_SIZE);
     //printf("Client has sent file info for %s \n", info.path);
@@ -418,7 +418,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     //printf("reading server message\n");
 
     read(sock, &storage, sizeof(int));
-    printf("server message: %d \n", storage);
+    //printf("server message: %d \n", storage);
 
     if (storage == MISMATCH){ //mismatch = 1
     	if (S_ISREG(sourcefile -> st_mode)){ //sends file data into server side
@@ -495,7 +495,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
 		//printf("done sending file\n");
 		
 		read(sock, &storage, sizeof(int));
-		printf("server message: %d\n", storage);
+		//printf("server message: %d\n", storage);
         } else {
 
 		perror("error finding file type\n");
@@ -514,7 +514,7 @@ int fcopy_client_helper(char *src_path, char *dest_path, char *host, int port, i
     }
     //check if source is a directory
     if (S_ISDIR(sourcefile -> st_mode)){
-	printf("opening src directory\n");
+	//printf("opening src directory\n");
     	directory = opendir(src_path);
     	
 		if( directory == NULL ){
@@ -592,12 +592,14 @@ void rewrite_sized_file( int fd, FILE *overwrite, int size ){
     if( nbytes == size + 1){
 	done = true;
 	fwrite(buf, sizeof(char), size, overwrite);
+	//clear null byte
+	//read(fd, after, 1);
     } else {
       after += nbytes;
       left  -= nbytes;
     
     
-      printf("nbytes: %d\n", nbytes);
+      //printf("nbytes: %d\n", nbytes);
     
       if(left <= 0 ){
 
@@ -705,13 +707,34 @@ void fcopy_server(int port){
 	//done reading struct to current_info
 	int nbytes = 0;	 
 	//char *char_after;
-	
-	if( (nbytes = read(fd, &(current_info.path), MAXPATH * sizeof(char))) <= 0){
+	strcpy(current_info.path, "");
+	while((current_info.path[0] == '\0') || current_info.path[0] == '\r' || current_info.path[0] == '\n' ||  current_info.path[0] == 127){
+	  if( (nbytes = read(fd, &(current_info.path), MAXPATH * sizeof(char))) <= 0){
 		perror("path receive error");
+		exit(1);
+	  }
 	}
-        printf("recieved path: %s\n", current_info.path);
+        //printf("recieved path: %s\n", current_info.path);
+	//disect error
+	//for(int i = 0 ; current_info.path[i] ; i++){
+
+	  //printf("index %d : %d\n", i, current_info.path[i]);
+
+	//}
 	
+	if( current_info.path[0] == '\0' ){
+
+	    perror("path is an empty string. socket has been emptied");
+	    exit(0);
+	    read(fd, &(current_info.path), MAXPATH * sizeof(char));
+	    //printf("new path: %s\n", current_info.path);
+
+	} else if (current_info.path[0] < 0 ){
 	
+	    perror("error with file path. Recieveing negative numbers as ascii characters.");
+	    exit(1);
+	
+	}
 	//printf("size of char: %d\n", (int) sizeof(char));
 	
 	//char_after = current_info.path;
@@ -734,13 +757,14 @@ void fcopy_server(int port){
 		perror("size recieve error");
 	}
 
-	if (current_info.size >= 10000000000000000 ){
+	if (current_info.size >= 10000000000 ){
 
+		//printf("curr size: %d\n", current_info.size);
 		perror("size is massive. Something is wrong with socket.");
 		exit(1);
 
 	}
-	printf("recieved size: %lu\n", current_info.size);
+	//printf("recieved size: %lu\n", current_info.size);
 	if(read(fd, &(current_info.hash), HASH_SIZE * sizeof(char)) < 0 ){
 		perror("hash recieve error");
 	}
