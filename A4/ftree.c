@@ -544,7 +544,7 @@ int fcopy_client(char *src_path, char *dest_path, char *host, int port){
 
 	if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1){
 		perror("error when calling socket");
-		exit(1);
+		exit(-1);
 	}
 	// filling in info for servaddr struct
 	peer.sin_family = AF_INET;
